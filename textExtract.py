@@ -3,6 +3,9 @@ import os
 from flask import Flask, request, jsonify
 from werkzeug.utils import secure_filename
 from PyPDF2 import PdfReader
+from docx import Document  # For reading .docx files
+import mammoth  # Optional: For .doc files
+import tempfile
 
 # Load the pre-trained spaCy model for Named Entity Recognition (NER)
 nlp = spacy.load('en_core_web_sm')
@@ -15,20 +18,32 @@ UPLOAD_FOLDER = 'uploads'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
+# Function to extract text from docx files
+def extract_text_from_docx(filepath):
+    document = Document(filepath)
+    text = '\n'.join([para.text for para in document.paragraphs])
+    return text
+
+# Function to extract text from doc files (using mammoth)
+def extract_text_from_doc(filepath):
+    with open(filepath, "rb") as doc_file:
+        result = mammoth.extract_raw_text(doc_file)
+        return result.value
+
 # Route for the root URL with the form
 @app.route('/')
 def index():
     return '''
-        <h1>Welcome to the PDF Text Extractor</h1>
-        <h4> rights owned by Ammar ANjum</h4>
-        <p>Upload a PDF to extract text:</p>
+        <h1>Welcome to the Resume Text Extractor</h1>
+        <h4>Rights owned by Ammar Anjum</h4>
+        <p>Upload a PDF, DOCX, or DOC to extract text:</p>
         <form action="/extract" method="post" enctype="multipart/form-data">
-            <input type="file" name="file" accept="application/pdf" required>
+            <input type="file" name="file" accept=".pdf,.docx,.doc" required>
             <button type="submit">Upload and Extract</button>
         </form>
     '''
 
-# Route to upload PDF and extract text
+# Route to upload a file and extract text
 @app.route('/extract', methods=['POST'])
 def extract_text():
     if 'file' not in request.files:
@@ -46,18 +61,28 @@ def extract_text():
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
             file.save(filepath)
 
-            # Read PDF text locally using PyPDF2
-            with open(filepath, 'rb') as f:
-                reader = PdfReader(f)
-                text = ''
-                for page in reader.pages:
-                    text += page.extract_text()
+            # Determine file type and extract text
+            text = ''
+            if filename.lower().endswith('.pdf'):
+                # Extract text from PDF
+                with open(filepath, 'rb') as f:
+                    reader = PdfReader(f)
+                    for page in reader.pages:
+                        text += page.extract_text()
+            elif filename.lower().endswith('.docx'):
+                # Extract text from DOCX
+                text = extract_text_from_docx(filepath)
+            elif filename.lower().endswith('.doc'):
+                # Extract text from DOC
+                text = extract_text_from_doc(filepath)
+            else:
+                return jsonify({"success": False, "message": "Unsupported file type"}), 400
 
             # Cleanup uploaded file
             os.remove(filepath)
 
-            if not text:
-                return jsonify({"success": False, "message": "No text extracted from PDF"}), 500
+            if not text.strip():
+                return jsonify({"success": False, "message": "No text extracted from the file"}), 500
 
             # Analyze text using spaCy's NER (Named Entity Recognition)
             doc = nlp(text)
@@ -71,7 +96,7 @@ def extract_text():
                 elif ent.label_ == "DATE":
                     extracted_data["dates"].append(ent.text)
             
-            # Example: Search for skills (this could be improved using a skills list or machine learning models)
+            # Example: Search for skills
             skills = ['Python', 'Java', 'C++', 'SQL', 'JavaScript', 'Machine Learning', 'Data Science']
             for skill in skills:
                 if skill.lower() in text.lower():

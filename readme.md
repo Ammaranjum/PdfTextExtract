@@ -1,5 +1,9 @@
 # PDF Text Extractor
 
+git add .
+git commit -m "Your commit message"
+git push origin main
+
 **PDF Text Extractor** is a tool that extracts text from PDF files and returns the extracted content in a structured JSON format. It uses **Flask** for the web interface, **PyPDF2** for PDF text extraction, and **spaCy** for advanced NLP tasks.
 
 ## Features
